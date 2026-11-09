@@ -361,10 +361,10 @@ async function updateAlert(site, result) {
 function collectVercelDiagnostics(site) {
   if (!VERCEL_TOKEN) return { status: "not_configured", reason: "Add the VERCEL_TOKEN GitHub Actions secret to enable runtime-log collection." };
   if (!site.vercelProjectId || !VERCEL_SCOPE) return { status: "not_configured", reason: "Vercel project ID or team scope is missing from watchdog configuration." };
-  const cli = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "vercel.cmd" : "vercel");
+  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
   try {
-    const output = execFileSync(cli, [
-      "logs", "--project", site.vercelProjectId,
+    const output = execFileSync(npx, [
+      "--yes", "--package=vercel@65.12.1", "vercel", "logs", "--project", site.vercelProjectId,
       "--environment", "production", "--since", "1h",
       "--level", "error", "--level", "warning",
       "--json", "--limit", "100", "--no-branch",

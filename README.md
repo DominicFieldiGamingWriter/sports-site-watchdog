@@ -24,7 +24,7 @@ For each website, the monitor:
 
 The Vercel CLI supports production runtime-log queries and JSON output. To enable collection during incidents, add a repository Actions secret named `VERCEL_TOKEN` with a Vercel token that can read logs for all three projects. The team scope is configured as `dominic-d7cc`.
 
-The workflow installs pinned Vercel CLI version `65.12.1` only when the secret is present. If the secret is absent or access is denied, monitoring continues normally and records that Vercel logs were unavailable. The token is not printed or stored in artifacts.
+When a failed site needs investigation and the secret is present, the watchdog invokes the pinned Vercel CLI version `65.12.1` through `npx`. Healthy five-minute runs do not install or invoke it. If the secret is absent or access is denied, monitoring continues normally and records that Vercel logs were unavailable. The token is not printed or stored in artifacts.
 
 The collector requests the previous one hour and runs only for a site with a failed watchdog check. Vercel runtime-log retention depends on the Vercel plan.
 
@@ -51,7 +51,7 @@ npm test
 npm run monitor
 ```
 
-Local runs produce `artifacts/report.json`. For optional Vercel incident-log collection, install the pinned Vercel CLI and set `VERCEL_TOKEN` and `VERCEL_SCOPE`.
+Local runs produce `artifacts/report.json`. For optional Vercel incident-log collection, set `VERCEL_TOKEN` and `VERCEL_SCOPE`.
 
 ## GitHub Actions
 
