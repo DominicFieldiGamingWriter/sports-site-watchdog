@@ -1,0 +1,29 @@
+{
+  "footballDataMaxAgeMinutes": 120,
+  "sites": [
+    {
+      "key": "ben",
+      "name": "Ben",
+      "url": "https://didbenplay.com/",
+      "healthUrl": "https://didbenplay.com/api/health",
+      "sport": "football",
+      "expectedPlayer": "Ben Brereton"
+    },
+    {
+      "key": "hamza",
+      "name": "Hamza",
+      "url": "https://didhamzaplay.com/",
+      "healthUrl": "https://didhamzaplay.com/api/health",
+      "sport": "football",
+      "expectedPlayer": "Hamza Choudhury"
+    },
+    {
+      "key": "alex",
+      "name": "Alex",
+      "url": "https://didalexwin.com/",
+      "healthUrl": "https://didalexwin.com/api/health",
+      "sport": "tennis",
+      "expectedPlayer": "Alexandra Eala"
+    }
+  ]
+}
