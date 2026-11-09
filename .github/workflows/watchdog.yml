@@ -1,0 +1,54 @@
+name: Sports Site Watchdog
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sports-site-watchdog
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Check Ben, Hamza and Alex
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out watchdog
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run website and data health checks
+        run: npm run monitor
+        env:
+          WATCHDOG_GITHUB_TOKEN: \${{ github.token }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          GITHUB_RUN_URL: https://github.com/\${{ github.repository }}/actions/runs/\${{ github.run_id }}
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchdog-diagnostics-\${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
