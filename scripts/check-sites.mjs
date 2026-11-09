@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { checkFootballMatchState, checkTennisMatchState } from "./match-checks.mjs";
 
 const ROOT = process.cwd();
 const CONFIG = JSON.parse(await fs.readFile(path.join(ROOT, "config/sites.json"), "utf8"));
@@ -111,6 +112,52 @@ async function checkHealth(site) {
     }
   } catch (error) {
     addFailure(result, "Health endpoint request failed: " + (error instanceof Error ? error.message : String(error)));
+  }
+
+  result.status = result.failures.length ? "failed" : "passed";
+  return result;
+}
+
+
+async function checkMatch(site) {
+  const result = {
+    status: "unknown",
+    url: site.matchUrl,
+    failures: [],
+    warnings: [],
+    details: {}
+  };
+
+  if (!site.matchUrl) {
+    addFailure(result, "No match diagnostics URL is configured for this site.");
+    result.status = "failed";
+    return result;
+  }
+
+  try {
+    const response = await fetchJson(site.matchUrl);
+    result.details.httpStatus = response.status;
+    if (!response.ok) {
+      addFailure(result, "Match diagnostics endpoint returned HTTP " + response.status + ".");
+    }
+    if (!response.body || typeof response.body !== "object") {
+      addFailure(result, "Match diagnostics endpoint did not return valid JSON.");
+    } else {
+      const options = {
+        expectedPlayer: site.expectedPlayer,
+        maxDataAgeMinutes: Number(site.matchDataMaxAgeMinutes ??
+          (site.sport === "tennis" ? site.idleDataMaxAgeMinutes : CONFIG.footballDataMaxAgeMinutes))
+      };
+      const checked = site.sport === "tennis"
+        ? checkTennisMatchState(response.body, options)
+        : checkFootballMatchState(response.body, options);
+      result.failures.push(...checked.failures);
+      result.warnings.push(...checked.warnings);
+      result.details = { ...result.details, ...checked.details };
+    }
+  } catch (error) {
+    addFailure(result, "Match diagnostics request failed: " +
+      (error instanceof Error ? error.message : String(error)));
   }
 
   result.status = result.failures.length ? "failed" : "passed";
@@ -234,6 +281,7 @@ async function updateAlert(site, result) {
   const existing = await findOpenAlert(site);
   const failures = [
     ...result.health.failures.map(message => "- Health: " + message),
+    ...result.match.failures.map(message => "- Match: " + message),
     ...result.page.failures.map(message => "- Browser: " + message)
   ];
   const body = [
@@ -242,12 +290,14 @@ async function updateAlert(site, result) {
     "- Site: " + site.url,
     "- Detected: " + new Date().toISOString(),
     "- Health check: " + result.health.status,
+    "- Match-state check: " + result.match.status,
     "- Browser check: " + result.page.status,
     "",
     "## Findings",
     ...failures,
     "",
-    result.health.details.dataAgeMinutes != null ? "- Data age: " + result.health.details.dataAgeMinutes + " minutes" : "",
+    result.health.details.dataAgeMinutes != null ? "- Health data age: " + result.health.details.dataAgeMinutes + " minutes" : "",
+    Object.keys(result.match.details).length ? "## Match diagnostics\n\n```json\n" + JSON.stringify(result.match.details, null, 2) + "\n```" : "",
     result.page.screenshot ? "- Screenshot: " + result.page.screenshot + " (see the workflow artifact)" : "",
     RUN_URL ? "- Workflow run: " + RUN_URL : "",
     "",
@@ -289,7 +339,7 @@ async function updateAlert(site, result) {
 
 const browser = await chromium.launch({ headless: true });
 const report = {
-  version: "0.1.0",
+  version: "0.2.0",
   checkedAt: new Date().toISOString(),
   runUrl: RUN_URL || null,
   sites: []
@@ -299,12 +349,14 @@ try {
   for (const site of CONFIG.sites) {
     console.log("Checking " + site.name + "...");
     const health = await checkHealth(site);
+    const match = await checkMatch(site);
     const page = await checkPage(browser, site);
     const result = {
       key: site.key,
       name: site.name,
-      status: health.failures.length || page.failures.length ? "failed" : "passed",
+      status: health.failures.length || match.failures.length || page.failures.length ? "failed" : "passed",
       health,
+      match,
       page
     };
     report.sites.push(result);
