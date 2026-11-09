@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { safeTransport, projectHealthPayload, projectMatchPayload, buildIncidentAnalysis, summariseVercelLogs, classifyVercelError } from "../scripts/diagnostics.mjs";
+import { safeTransport, safeDiagnosticText, projectHealthPayload, projectMatchPayload, buildIncidentAnalysis, summariseVercelLogs, classifyVercelError } from "../scripts/diagnostics.mjs";
 
 test("transport evidence keeps correlation headers and removes query strings", () => {
   const result = safeTransport({ "x-vercel-id": "sin1::abc", "content-type": "application/json", "set-cookie": "secret=value" }, "https://example.com/api/watchdog?token=private");
