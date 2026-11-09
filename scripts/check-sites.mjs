@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { checkFootballMatchState, checkTennisMatchState } from "./match-checks.mjs";
+import { safeTransport, projectHealthPayload, projectMatchPayload, buildIncidentAnalysis, summariseVercelLogs, classifyVercelError } from "./diagnostics.mjs";
 
 const ROOT = process.cwd();
 const CONFIG = JSON.parse(await fs.readFile(path.join(ROOT, "config/sites.json"), "utf8"));
@@ -9,6 +10,8 @@ const ARTIFACTS = path.join(ROOT, "artifacts");
 const RUN_URL = process.env.GITHUB_RUN_URL || "";
 const REPOSITORY = process.env.GITHUB_REPOSITORY || "";
 const TOKEN = process.env.WATCHDOG_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN || "";
+const VERCEL_SCOPE = process.env.VERCEL_SCOPE || CONFIG.vercelTeamSlug || "";
 const MAX_AGE_MS = Number(CONFIG.footballDataMaxAgeMinutes || 120) * 60_000;
 
 await fs.mkdir(ARTIFACTS, { recursive: true });
@@ -33,7 +36,7 @@ async function fetchJson(url) {
     const text = await response.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch {}
-    return { status: response.status, ok: response.ok, body, text: text.slice(0, 2000) };
+    return { status: response.status, ok: response.ok, body, text: text.slice(0, 2000), transport: safeTransport(response.headers, url) };
   } finally {
     clearTimeout(timeout);
   }
@@ -44,6 +47,7 @@ async function checkHealth(site) {
   try {
     const response = await fetchJson(site.healthUrl);
     result.details.httpStatus = response.status;
+    result.evidence = { transport: response.transport, payload: projectHealthPayload(site, response.body) };
     if (!response.ok && site.sport !== "tennis") {
       addFailure(result, "Health endpoint returned HTTP " + response.status + ".");
       result.details.response = response.body || response.text;
@@ -137,6 +141,7 @@ async function checkMatch(site) {
   try {
     const response = await fetchJson(site.matchUrl);
     result.details.httpStatus = response.status;
+    result.evidence = { transport: response.transport, payload: projectMatchPayload(site, response.body) };
     if (!response.ok) {
       addFailure(result, "Match diagnostics endpoint returned HTTP " + response.status + ".");
     }
@@ -204,6 +209,7 @@ async function checkPage(browser, site) {
   try {
     const response = await page.goto(site.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     result.details.httpStatus = response?.status() ?? null;
+    result.details.transport = safeTransport(response?.headers() ?? {}, page.url());
     result.details.finalUrl = page.url();
     result.details.title = await page.title().catch(() => "");
     result.details.headings = await page.locator("h1").allTextContents().catch(() => []);
@@ -279,6 +285,7 @@ async function updateAlert(site, result) {
   }
 
   const existing = await findOpenAlert(site);
+  const analysis = result.analysis || buildIncidentAnalysis(site, result);
   const failures = [
     ...result.health.failures.map(message => "- Health: " + message),
     ...result.match.failures.map(message => "- Match: " + message),
@@ -295,6 +302,19 @@ async function updateAlert(site, result) {
     "",
     "## Findings",
     ...failures,
+    "",
+    "## Deterministic diagnostic assessment",
+    "- Primary area to investigate: " + analysis.primary.area + " (" + analysis.primary.confidence + " confidence)",
+    "- Why: " + analysis.primary.reason,
+    "- Suggested next check: " + analysis.primary.nextStep,
+    "- Assessment: " + analysis.conclusion,
+    "",
+    "## Request correlation",
+    "- Health endpoint: " + JSON.stringify(result.health.evidence?.transport ?? null),
+    "- Match endpoint: " + JSON.stringify(result.match.evidence?.transport ?? null),
+    "- Homepage: " + JSON.stringify(result.page.details.transport ?? null),
+    result.evidence ? "## Sanitised evidence snapshot\n\n```json\n" + JSON.stringify(result.evidence, null, 2) + "\n```" : "",
+    result.vercelDiagnostics ? "## Vercel runtime log summary\n\n```json\n" + JSON.stringify(result.vercelDiagnostics, null, 2) + "\n```" : "",
     "",
     result.health.details.dataAgeMinutes != null ? "- Health data age: " + result.health.details.dataAgeMinutes + " minutes" : "",
     Object.keys(result.match.details).length ? "## Match diagnostics\n\n```json\n" + JSON.stringify(result.match.details, null, 2) + "\n```" : "",
@@ -337,9 +357,28 @@ async function updateAlert(site, result) {
   }
 }
 
+function collectVercelDiagnostics(site) {
+  if (!VERCEL_TOKEN) return { status: "not_configured", reason: "Add the VERCEL_TOKEN GitHub Actions secret to enable runtime-log collection." };
+  if (!site.vercelProjectId || !VERCEL_SCOPE) return { status: "not_configured", reason: "Vercel project ID or team scope is missing from watchdog configuration." };
+  const cli = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "vercel.cmd" : "vercel");
+  try {
+    const output = execFileSync(cli, [
+      "logs", "--project", site.vercelProjectId,
+      "--environment", "production", "--since", "1h",
+      "--level", "error", "--level", "warning",
+      "--json", "--limit", "100", "--no-branch",
+      "--token", VERCEL_TOKEN, "--scope", VERCEL_SCOPE
+    ], { encoding: "utf8", timeout: 25000, maxBuffer: 5 * 1024 * 1024, windowsHide: true });
+    return summariseVercelLogs(output);
+  } catch (error) {
+    return { status: "unavailable", reason: classifyVercelError(error) };
+  }
+}
+
 const browser = await chromium.launch({ headless: true });
 const report = {
-  version: "0.2.0",
+  version: "0.3.0",
+  diagnosticMode: "evidence-first read-only",
   checkedAt: new Date().toISOString(),
   runUrl: RUN_URL || null,
   sites: []
@@ -357,8 +396,25 @@ try {
       status: health.failures.length || match.failures.length || page.failures.length ? "failed" : "passed",
       health,
       match,
-      page
+      page,
+      evidence: {
+        dataBackend: site.dataBackend || "site diagnostic endpoint",
+        capturedAt: new Date().toISOString(),
+        health: health.evidence || null,
+        match: match.evidence || null,
+        browser: {
+          httpStatus: page.details.httpStatus ?? null,
+          title: page.details.title ?? null,
+          headings: page.details.headings ?? [],
+          pageErrors: page.details.pageErrors ?? [],
+          firstPartyFailures: page.details.firstPartyFailures ?? [],
+          firstParty5xx: page.details.firstParty5xx ?? [],
+          transport: page.details.transport ?? null
+        }
+      }
     };
+    result.analysis = buildIncidentAnalysis(site, result);
+    if (result.status === "failed") result.vercelDiagnostics = collectVercelDiagnostics(site);
     report.sites.push(result);
     await updateAlert(site, result);
     console.log(site.name + ": " + result.status);

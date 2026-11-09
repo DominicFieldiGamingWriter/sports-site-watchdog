@@ -57,12 +57,24 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Install pinned Vercel CLI when runtime diagnostics are enabled
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            npm install --no-save --no-package-lock --no-audit --no-fund vercel@65.12.1
+          else
+            echo "VERCEL_TOKEN is not configured; app-level evidence will still be collected."
+          fi
+
       - name: Run website and data health checks
         run: npm run monitor
         env:
           WATCHDOG_GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: dominic-d7cc
 
       - name: Upload diagnostics
         if: always()

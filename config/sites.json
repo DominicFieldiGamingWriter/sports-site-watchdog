@@ -9,7 +9,8 @@
       "matchUrl": "https://didbenplay.com/api/watchdog",
       "sport": "football",
       "expectedPlayer": "Ben Brereton",
-      "matchDataMaxAgeMinutes": 120
+      "matchDataMaxAgeMinutes": 120,
+      "vercelProjectId": "prj_ZGKS5rmSx4IUMIsxzbz20vWym4GL"
     },
     {
       "key": "hamza",
@@ -19,7 +20,8 @@
       "matchUrl": "https://didhamzaplay.com/api/watchdog",
       "sport": "football",
       "expectedPlayer": "Hamza Choudhury",
-      "matchDataMaxAgeMinutes": 120
+      "matchDataMaxAgeMinutes": 120,
+      "vercelProjectId": "prj_6dHgHv53oyqQRx1Or6LssbPJ5Z1A"
     },
     {
       "key": "alex",
@@ -30,7 +32,10 @@
       "sport": "tennis",
       "expectedPlayer": "Alexandra Eala",
       "idleDataMaxAgeMinutes": 780,
-      "matchDataMaxAgeMinutes": 780
+      "matchDataMaxAgeMinutes": 780,
+      "vercelProjectId": "prj_MlfEqb7bcSX0EkRuKSwNXR3dCcGh",
+      "dataBackend": "Supabase canonical match ledger"
     }
-  ]
+  ],
+  "vercelTeamSlug": "dominic-d7cc"
 }
