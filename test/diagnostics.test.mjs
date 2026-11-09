@@ -67,3 +67,10 @@ test("Vercel log summariser groups logs and strips query strings and numeric IDs
 test("Vercel error messages are converted to safe operator guidance", () => {
   assert.match(classifyVercelError({ stderr: "unauthorized invalid token" }), /token was rejected/);
 });
+
+test("diagnostic text redacts credentials, emails and URL query values", () => {
+  const result = safeDiagnosticText("Bearer abc.def?token=leak user@example.com https://site.test/api?key=secret");
+  assert.equal(result.includes("abc.def"), false);
+  assert.equal(result.includes("user@example.com"), false);
+  assert.equal(result.includes("key=secret"), false);
+});

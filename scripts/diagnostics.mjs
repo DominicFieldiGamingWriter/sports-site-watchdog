@@ -1,6 +1,18 @@
 const pick = (...values) => values.find(value => value !== undefined && value !== null && value !== "");
 const asName = value => typeof value === "string" ? value : value?.name ?? value?.team_name ?? value?.full_name ?? null;
 
+export function safeDiagnosticText(value, maxLength = 400) {
+  return String(value ?? "")
+    .replace(/https?:\/\/[^\s"'\x60<>]+/gi, url => {
+      try { const parsed = new URL(url); return parsed.origin + parsed.pathname; } catch { return "[url]"; }
+    })
+    .replace(/(bearer\s+)[A-Za-z0-9._~+\/-]+/gi, "$1[REDACTED]")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|sbp_[A-Za-z0-9_-]{16,}|sb_secret_[A-Za-z0-9_-]{16,})\b/gi, "[REDACTED_SECRET]")
+    .replace(/([?&](?:token|key|secret|auth|email)=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]")
+    .slice(0, maxLength);
+}
+
 export function safeTransport(headers = {}, url = "") {
   const get = name => headers instanceof Headers ? headers.get(name) : headers[name] ?? headers[name.toLowerCase()];
   const allowed = ["date", "server", "content-type", "cache-control", "retry-after", "x-vercel-id", "x-vercel-cache", "x-matched-path", "x-vercel-deployment-url"];

@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { chromium } from "playwright";
 import { checkFootballMatchState, checkTennisMatchState } from "./match-checks.mjs";
-import { safeTransport, projectHealthPayload, projectMatchPayload, buildIncidentAnalysis, summariseVercelLogs, classifyVercelError } from "./diagnostics.mjs";
+import { safeTransport, safeDiagnosticText, projectHealthPayload, projectMatchPayload, buildIncidentAnalysis, summariseVercelLogs, classifyVercelError } from "./diagnostics.mjs";
 
 const ROOT = process.cwd();
 const CONFIG = JSON.parse(await fs.readFile(path.join(ROOT, "config/sites.json"), "utf8"));
@@ -50,7 +51,7 @@ async function checkHealth(site) {
     result.evidence = { transport: response.transport, payload: projectHealthPayload(site, response.body) };
     if (!response.ok && site.sport !== "tennis") {
       addFailure(result, "Health endpoint returned HTTP " + response.status + ".");
-      result.details.response = response.body || response.text;
+      result.details.response = { validJson: Boolean(response.body), contentType: response.transport.headers["content-type"] ?? null };
       result.status = "failed";
       return result;
     }
@@ -115,7 +116,7 @@ async function checkHealth(site) {
       }
     }
   } catch (error) {
-    addFailure(result, "Health endpoint request failed: " + (error instanceof Error ? error.message : String(error)));
+    addFailure(result, "Health endpoint request failed: " + safeDiagnosticText(error instanceof Error ? error.message : String(error)));
   }
 
   result.status = result.failures.length ? "failed" : "passed";
@@ -162,7 +163,7 @@ async function checkMatch(site) {
     }
   } catch (error) {
     addFailure(result, "Match diagnostics request failed: " +
-      (error instanceof Error ? error.message : String(error)));
+      safeDiagnosticText(error instanceof Error ? error.message : String(error)));
   }
 
   result.status = result.failures.length ? "failed" : "passed";
@@ -184,16 +185,16 @@ async function checkPage(browser, site) {
 
   page.on("console", message => {
     if (message.type() === "error" && result.details.consoleErrors.length < 15) {
-      result.details.consoleErrors.push(message.text().slice(0, 500));
+      result.details.consoleErrors.push(safeDiagnosticText(message.text(), 300));
     }
   });
-  page.on("pageerror", error => result.details.pageErrors.push(error.message.slice(0, 1000)));
+  page.on("pageerror", error => result.details.pageErrors.push(safeDiagnosticText(error.message, 400)));
   page.on("requestfailed", request => {
     try {
       if (new URL(request.url()).hostname === hostname && result.details.firstPartyFailures.length < 15) {
         result.details.firstPartyFailures.push({
-          url: request.url().slice(0, 500),
-          error: request.failure()?.errorText || "request failed"
+          url: safeTransport({}, request.url()).url,
+          error: safeDiagnosticText(request.failure()?.errorText || "request failed", 200)
         });
       }
     } catch {}
@@ -201,7 +202,7 @@ async function checkPage(browser, site) {
   page.on("response", response => {
     try {
       if (new URL(response.url()).hostname === hostname && response.status() >= 500 && result.details.firstParty5xx.length < 15) {
-        result.details.firstParty5xx.push({ url: response.url().slice(0, 500), status: response.status() });
+        result.details.firstParty5xx.push({ url: safeTransport({}, response.url()).url, status: response.status() });
       }
     } catch {}
   });
@@ -210,7 +211,7 @@ async function checkPage(browser, site) {
     const response = await page.goto(site.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     result.details.httpStatus = response?.status() ?? null;
     result.details.transport = safeTransport(response?.headers() ?? {}, page.url());
-    result.details.finalUrl = page.url();
+    result.details.finalUrl = safeTransport({}, page.url()).url;
     result.details.title = await page.title().catch(() => "");
     result.details.headings = await page.locator("h1").allTextContents().catch(() => []);
     result.details.bodyTextLength = await page.locator("body").innerText().then(text => text.trim().length).catch(() => 0);
@@ -249,7 +250,7 @@ async function checkPage(browser, site) {
       });
     }
   } catch (error) {
-    addFailure(result, "Browser check failed: " + (error instanceof Error ? error.message : String(error)));
+    addFailure(result, "Browser check failed: " + safeDiagnosticText(error instanceof Error ? error.message : String(error)));
     const filename = site.key + "-" + new Date().toISOString().replace(/[:.]/g, "-") + ".png";
     result.screenshot = "artifacts/" + filename;
     await page.screenshot({ path: path.join(ARTIFACTS, filename), fullPage: true }).catch(() => {
