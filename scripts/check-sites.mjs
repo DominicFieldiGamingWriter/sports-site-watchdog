@@ -237,7 +237,7 @@ async function updateAlert(site, result) {
     ...result.page.failures.map(message => "- Browser: " + message)
   ];
   const body = [
-    "## Watchdog detected a problem with " + site.name,
+    "@DominicFieldiGamingWriter — the Sports Site Watchdog has detected a problem requiring attention.\n\n## Watchdog detected a problem with " + site.name,
     "",
     "- Site: " + site.url,
     "- Detected: " + new Date().toISOString(),
@@ -263,7 +263,7 @@ async function updateAlert(site, result) {
         "content-type": "application/json",
         "x-github-api-version": "2022-11-28"
       },
-      body: JSON.stringify({ title: "[Watchdog] " + site.name + " site check failing", body })
+      body: JSON.stringify({ title: "[Watchdog] " + site.name + " site check failing", body, assignees: ["DominicFieldiGamingWriter"] })
     });
     if (!response.ok) throw new Error("Could not create " + site.name + " alert issue: HTTP " + response.status + " " + await response.text());
     console.log("Opened watchdog alert for " + site.name + ".");
