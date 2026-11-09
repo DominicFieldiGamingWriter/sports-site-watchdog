@@ -27,7 +27,7 @@ test("football rejects a final fixture without a score", () => {
 test("football rejects a live fixture without scores", () => {
   const s = football({ liveMatch: { id: 102, date: "2026-11-09T11:00:00.000Z", status: "2H", home: "A", away: "B" } });
   const r = checkFootballMatchState(s, { now });
-  assert.ok(r.failures.some(x => x.includes("live football match is missing")));
+  assert.ok(r.failures.some(x => /live football match is missing/i.test(x)));
 });
 test("football rejects a past fixture left in nextFixtures", () => {
   const s = football({ nextFixtures: [{ id: 103, date: "2026-11-08T00:00:00.000Z", home: "A", away: "B" }] });
