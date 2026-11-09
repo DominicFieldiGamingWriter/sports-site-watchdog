@@ -23,7 +23,8 @@
       "url": "https://didalexwin.com/",
       "healthUrl": "https://didalexwin.com/api/health",
       "sport": "tennis",
-      "expectedPlayer": "Alexandra Eala"
+      "expectedPlayer": "Alexandra Eala",
+      "idleDataMaxAgeMinutes": 780
     }
   ]
 }

@@ -43,7 +43,7 @@ async function checkHealth(site) {
   try {
     const response = await fetchJson(site.healthUrl);
     result.details.httpStatus = response.status;
-    if (!response.ok) {
+    if (!response.ok && site.sport !== "tennis") {
       addFailure(result, "Health endpoint returned HTTP " + response.status + ".");
       result.details.response = response.body || response.text;
       result.status = "failed";
@@ -56,7 +56,9 @@ async function checkHealth(site) {
     }
 
     const payload = response.body;
-    if (payload.ok !== true) addFailure(result, "Health endpoint reported ok=false.");
+    if (site.sport === "football" && payload.ok !== true) {
+      addFailure(result, "Health endpoint reported ok=false.");
+    }
 
     if (site.sport === "football") {
       const data = payload.data;
@@ -87,13 +89,24 @@ async function checkHealth(site) {
     } else {
       result.details.lastSyncedAt = payload.lastSyncedAt || null;
       result.details.stale = payload.stale ?? null;
-      if (payload.ok !== true || payload.stale === true) {
-        addFailure(result, "Alex health endpoint reports stale or unhealthy tennis data.");
-      }
+      const maxAgeMinutes = Number(site.idleDataMaxAgeMinutes || 780);
+      result.details.idleDataMaxAgeMinutes = maxAgeMinutes;
       if (!payload.lastSyncedAt || !Number.isFinite(Date.parse(payload.lastSyncedAt))) {
         addFailure(result, "Alex health endpoint returned no valid lastSyncedAt timestamp.");
       } else {
-        result.details.dataAgeMinutes = Math.round((Date.now() - Date.parse(payload.lastSyncedAt)) / 60_000);
+        const ageMs = Date.now() - Date.parse(payload.lastSyncedAt);
+        result.details.dataAgeMinutes = Math.round(ageMs / 60_000);
+        if (ageMs < -5 * 60_000) {
+          addFailure(result, "Alex data timestamp is more than five minutes in the future.");
+        } else if (ageMs > maxAgeMinutes * 60_000) {
+          addFailure(result, "Alex tennis data is older than the configured idle-sync tolerance: " + result.details.dataAgeMinutes + " minutes (limit " + maxAgeMinutes + ").");
+        } else if (response.status === 503 && payload.stale === true) {
+          result.warnings.push(
+            "Alex's health endpoint applies a fixed 30-minute stale threshold, but the sync function uses a dynamic cadence of up to 12 hours when idle. The last sync is within the watchdog's configured " + maxAgeMinutes + "-minute idle tolerance. Match-window-specific freshness checks are a later watchdog stage."
+          );
+        } else if (!response.ok || payload.ok !== true || payload.stale === true) {
+          addFailure(result, "Alex health endpoint reports unhealthy tennis data for a reason other than the expected idle-sync threshold.");
+        }
       }
     }
   } catch (error) {

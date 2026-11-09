@@ -14,7 +14,7 @@ For each website, the monitor:
 - Checks that the health endpoint returns valid, healthy JSON.
 - Checks the expected player identity.
 - Checks Ben/Hamza's Supabase-backed `updated_at` timestamp (maximum age: 120 minutes).
-- Checks Alex's existing health endpoint, which reports stale data as unhealthy.
+- Checks Alex's existing health endpoint and allows up to 13 hours of idle data age, matching the function's 12-hour idle cadence plus a 1-hour scheduling margin. Its existing endpoint has a fixed 30-minute stale threshold, which is stricter than the actual idle sync schedule.
 - Opens the homepage in Chromium and checks the HTTP response, title, rendered content and expected player identity.
 - Captures uncaught browser errors, first-party HTTP 5xx responses and failed first-party requests.
 - Saves a JSON report and screenshots when browser checks fail.
@@ -25,7 +25,7 @@ Every failed site check opens one GitHub issue for that site. The issue remains 
 
 This is the first monitoring layer, not yet the complete match-aware AI repair agent.
 
-It does **not yet** verify whether match scores, lineups, red cards, substitutions, odds or tournament progression are factually correct. It does not yet inspect Vercel runtime error clusters or perform broader direct Supabase table diagnostics.
+It does **not yet** verify whether match scores, lineups, red cards, substitutions, odds or tournament progression are factually correct. It does not yet inspect Vercel runtime error clusters or perform broader direct Supabase table diagnostics. Alex's idle-data tolerance is a temporary schedule-aware rule; match-window-specific tennis freshness checks still need to be added.
 
 The monitor does not trigger football/WTA refresh jobs, modify the three site repositories, push code or deploy changes. It uses existing health endpoints and rendered pages to avoid consuming additional sports-data API quota.
 
