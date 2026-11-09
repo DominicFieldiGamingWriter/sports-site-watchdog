@@ -7,18 +7,39 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: sports-site-watchdog
+  group: sports-site-watchdog-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  test:
+    name: Test match lifecycle checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out watchdog
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run deterministic tests
+        run: npm test
+
   monitor:
     name: Check Ben, Hamza and Alex
+    if: github.event_name != 'pull_request'
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:

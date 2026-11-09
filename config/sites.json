@@ -6,25 +6,31 @@
       "name": "Ben",
       "url": "https://didbenplay.com/",
       "healthUrl": "https://didbenplay.com/api/health",
+      "matchUrl": "https://didbenplay.com/api/watchdog",
       "sport": "football",
-      "expectedPlayer": "Ben Brereton"
+      "expectedPlayer": "Ben Brereton",
+      "matchDataMaxAgeMinutes": 120
     },
     {
       "key": "hamza",
       "name": "Hamza",
       "url": "https://didhamzaplay.com/",
       "healthUrl": "https://didhamzaplay.com/api/health",
+      "matchUrl": "https://didhamzaplay.com/api/watchdog",
       "sport": "football",
-      "expectedPlayer": "Hamza Choudhury"
+      "expectedPlayer": "Hamza Choudhury",
+      "matchDataMaxAgeMinutes": 120
     },
     {
       "key": "alex",
       "name": "Alex",
       "url": "https://didalexwin.com/",
       "healthUrl": "https://didalexwin.com/api/health",
+      "matchUrl": "https://didalexwin.com/api/watchdog",
       "sport": "tennis",
       "expectedPlayer": "Alexandra Eala",
-      "idleDataMaxAgeMinutes": 780
+      "idleDataMaxAgeMinutes": 780,
+      "matchDataMaxAgeMinutes": 780
     }
   ]
 }
