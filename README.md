@@ -6,30 +6,39 @@ A scheduled, read-only monitor for:
 - https://didhamzaplay.com/
 - https://didalexwin.com/
 
-## What v0.2 checks
+## What v0.3 checks
 
 For each website, the monitor:
 
-- Calls the site's public health endpoint and checks valid, healthy JSON.
-- Checks the expected player identity and the age of the underlying data.
-- Calls the read-only `/api/watchdog` match diagnostics endpoint.
-- Checks Ben/Hamza's latest, live and upcoming football fixtures for IDs, dates, team names, final/live score consistency, duplicate lifecycle states and stale fixtures left in the upcoming list.
-- Checks Alex's canonical tennis ledger for data freshness, completed singles results, result booleans, source labels, and next-fixture state/date consistency.
-- Opens the homepage in Chromium and checks the HTTP response, title, rendered content and expected player identity.
-- Captures uncaught browser errors, first-party HTTP 5xx responses and failed first-party requests.
-- Saves a JSON report and screenshots when browser checks fail.
+- Calls the public health endpoint and checks player identity, response health and data freshness.
+- Calls the read-only `/api/watchdog` endpoint and validates match lifecycle and canonical tennis ledger invariants.
+- Opens the homepage in Chromium and records HTTP status, title, headings, rendered length, JavaScript errors, first-party failures and screenshots when browser checks fail.
+- Captures a sanitised evidence bundle: response status, selected Vercel correlation/cache headers, player and team identifiers, data timestamps, latest result, live state, upcoming fixtures and relevant player-appearance status.
+- Labels the data source used by each diagnostics endpoint. For Alex, the snapshot includes the Supabase sync heartbeat source, canonical row-update timestamp, ledger counts and latest canonical match result.
+- Produces deterministic investigation leads when a site fails. These identify likely areas such as refresh/ingestion, provider mapping, API/serverless functions, fixture lifecycle or frontend rendering. They are hypotheses, not confirmed root causes.
+- When a site fails and the optional `VERCEL_TOKEN` secret is present, queries the Vercel CLI for production error/warning logs from the last hour. Only aggregate metadata is retained: level/status counts, sanitised route counts, deployment/request correlation IDs and timestamps. Raw log messages are excluded from issue text and artifacts.
+- Opens one GitHub issue per failing site, including the investigation lead, sanitised evidence and Vercel log summary. It closes the issue after all checks recover.
+- Uploads `artifacts/report.json` and screenshots as GitHub Actions artifacts.
 
-The football diagnostics endpoints expose the public match state already used by each site's page. Alex's diagnostics endpoint reads the canonical tennis ledger. These endpoints are read-only and do not trigger refresh jobs or change site data.
+## Vercel runtime log integration
 
-Every failed site check opens one GitHub issue for that site. The issue remains open while the site continues failing and is closed when all checks recover. Alerts include match-state findings and a compact diagnostic summary. Browser screenshots and the JSON report are uploaded as a workflow artifact.
+The Vercel CLI supports production runtime-log queries and JSON output. To enable collection during incidents, add a repository Actions secret named `VERCEL_TOKEN` with a Vercel token that can read logs for all three projects. The team scope is configured as `dominic-d7cc`.
 
-## Scope and limitations
+When a failed site needs investigation and the secret is present, the watchdog invokes the pinned Vercel CLI version `65.12.1` through `npx`. Healthy five-minute runs do not install or invoke it. If the secret is absent or access is denied, monitoring continues normally and records that Vercel logs were unavailable. The token is not printed or stored in artifacts.
 
-Match-aware checks validate the structure, lifecycle and freshness of the data currently stored by each site. They do **not** independently verify match scores against a second live sports-data provider. They also do not yet inspect Vercel runtime-error clusters, run broader Supabase table diagnostics, verify every lineup/substitution/red-card detail, or compare WTA and Bornan source records independently.
+The collector requests the previous one hour and runs only for a site with a failed watchdog check. Vercel runtime-log retention depends on the Vercel plan.
 
-A warning means the watchdog found something worth reviewing but does not yet treat it as a confirmed fault. An alert is evidence that a defined check failed, not proof that the underlying sporting fact is wrong.
+## Supabase evidence
 
-The monitor is read-only. It does not trigger football/WTA refresh jobs, modify the three site repositories, push code or deploy changes.
+The Alex diagnostics endpoint reads the Supabase `eala_stats.updated_at` heartbeat and canonical match ledger. The watchdog records the heartbeat timestamp source, canonical row timestamp, record counts, latest completed result and next-fixture information. It does not use or expose a Supabase `service_role` key, nor does it run arbitrary SQL from GitHub Actions.
+
+This is read-only evidence from the app's existing diagnostics endpoint, not a full database audit. Ben and Hamza's data sources are reported as their respective site diagnostics endpoints; no assumption is made that they use Supabase.
+
+## Security and limitations
+
+The watchdog repository is public. Incident snapshots exclude raw Vercel log messages, secrets, cookies, request bodies and query strings. Only allow-listed response headers and selected public match fields are stored. Vercel log aggregation excludes message text and normalises numeric/UUID URL path segments.
+
+The deterministic assessment is not an AI diagnosis. It cannot prove that a score is factually correct without an independent authoritative source. It does not modify source records, trigger sync jobs, edit site repositories, open repair PRs or deploy code.
 
 ## Run locally
 
@@ -42,20 +51,10 @@ npm test
 npm run monitor
 ```
 
-Local runs produce `artifacts/report.json`. GitHub issue alerts are enabled automatically inside GitHub Actions; local runs need `WATCHDOG_GITHUB_TOKEN` and `GITHUB_REPOSITORY` environment variables for issue integration.
+Local runs produce `artifacts/report.json`. For optional Vercel incident-log collection, set `VERCEL_TOKEN` and `VERCEL_SCOPE`.
 
 ## GitHub Actions
 
-The workflow runs every five minutes and can also be started manually from the Actions tab. GitHub may delay scheduled runs during busy periods.
+The workflow runs every five minutes and can also be started manually. Pull requests run deterministic tests only; scheduled, manual and main-branch push runs perform live monitoring.
 
-Pull requests run the deterministic match-lifecycle test suite. The monitoring job runs only on scheduled, manual and main-branch push events, not on pull requests.
-
-It uses the built-in `GITHUB_TOKEN` to create and close monitoring issues. No API keys or site secrets are required for v0.2.
-
-The workflow declares `issues: write` permission. If repository settings override workflow token permissions, enable read/write permissions for Actions.
-
-## Interpreting alerts
-
-An alert means one or more defined checks failed. It is a signal to investigate, not proof that the underlying match information is factually incorrect.
-
-Console errors and failed first-party requests are captured as warnings unless they meet a defined failure condition. External provider failures are not automatically treated as website defects.
+It uses the built-in `GITHUB_TOKEN` to create and close monitoring issues. The workflow needs `issues: write` permission. No Supabase secret is required for the currently exposed read-only diagnostic snapshot.
